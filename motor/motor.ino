@@ -63,6 +63,16 @@ void setup(void)
    pinMode(led, OUTPUT);
    digitalWrite(led, 0);
    Serial.begin(115200);
+   while (!Serial) {}
+   //https://github.com/esp8266/Arduino/issues/2186
+   // sometimes wifi does not reconnect.. the below
+   // 3 lines fixes it.
+   // rebooting router is the only option .. pretty annoying.
+   //WiFi.persistent(false); --> This was crashing esp, don't know why
+   // The below lines seems to work fine.
+   WiFi.mode(WIFI_OFF);
+   WiFi.mode(WIFI_STA);
+   WiFi.setOutputPower(0);
    WiFi.begin(ssid, password);
    Serial.println("");
 
@@ -99,5 +109,10 @@ void setup(void)
 
 void loop(void)
 {
+   if (WiFi.status() != WL_CONNECTED)
+     {
+        ESP.restart();
+        return;
+     }
    server.handleClient();
 }

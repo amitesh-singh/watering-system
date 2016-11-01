@@ -20,8 +20,9 @@
 #include <Arduino.h>
 
 #include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
+//#include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
+#include <ThingSpeak.h>
 
 #include <Ticker.h>
 
@@ -33,13 +34,15 @@ static const char *host = "192.168.0.101";
 static const uint16_t port = 8080;
 static const uint8_t portMotor = 5; // GPIO_5
 static const char *ssid = "AMIDUINO";
-static const char *ssidPasswd = "password";
+static const char *ssidPasswd = "f53*gmPS";
+
+WiFiClient client;
 
 #define MOTOR_RUNNING_TIME 60 * 2 // 2 mins
 #define MOISTURE_THRESHOLD 600
 #define MOISTURE_THRESHOLD_LIMIT 800
 
-ESP8266WiFiMulti WifiMulti;
+//ESP8266WiFiMulti WifiMulti;
 
 enum {
      MOTOR_STOP = 0,
@@ -61,28 +64,47 @@ void setup()
 {
 #ifdef DEBUG
    Serial.begin(115200);
-   Serial.println();
-   Serial.println();
-   Serial.println();
-   Serial.println();
+   delay(18000);
+   Serial.println("");
+   Serial.println("");
+   Serial.println("");
+   Serial.println("");
 #endif
 
-   WifiMulti.addAP(ssid, ssidPasswd);
+   //ThingSpeak does not work with it.
+   //WifiMulti.addAP(ssid, ssidPasswd);
 
-   if (WifiMulti.run() != WL_CONNECTED)
-     {
+   //https://github.com/esp8266/Arduino/issues/2186
+   // sometimes wifi does not reconnect.. the below
+   // 3 lines fixes it.
+   // rebooting router is the only option .. pretty annoying.
+   //WiFi.persistent(false); --> This was crashing esp, don't know why
+   // The below lines seems to work fine.
+   WiFi.mode(WIFI_OFF);
+   WiFi.mode(WIFI_STA);
+   WiFi.setOutputPower(0);
+   WiFi.begin(ssid, ssidPasswd);
+
+   /*
+      while(WiFi.status() != WL_CONNECTED)
+      {
 #ifdef DEBUG
-        Serial.println("connecting....");
+Serial.println(".");
 #endif
-        delay(1000);
-     }
+delay(500);
+}
+    */
+   delay(5000);
 
 #ifdef DEBUG
    Serial.println("Connected to wifi router");
+   Serial.println(WiFi.localIP());
 #endif
 
    pinMode(portMotor, OUTPUT);
-}
+   ThingSpeak.begin(client);
+   delay(1000);
+   }
 
 static void _stop_motor_cb()
 {
@@ -97,40 +119,37 @@ static void _stop_motor_cb()
 static String wateringJob(int taskId, uint16_t adcValue = 0)
 {
    String ret = "";
-   if (WifiMulti.run() == WL_CONNECTED)
+   HTTPClient http;
+   char buf[30];
+
+   if (taskId == JOB_SEND_EMAIL_START)
      {
-        HTTPClient http;
-        char buf[30];
-
-        if (taskId == JOB_SEND_EMAIL_START)
-          {
-             sprintf(buf, "/wateringJob?task=%d&adcvalue=%d", taskId, adcValue);
-          }
-        else
-          sprintf(buf, "/wateringJob?task=%d", taskId);
-
-        http.begin(host, port, buf);
-
-        delay(1000);
-        int httpCode = http.GET();
-        delay(12000);
-        if (httpCode > 0)
-          {
-             if (httpCode == HTTP_CODE_OK)
-               {
-                  ret = http.getString();
-#ifdef DEBUG
-                  Serial.println(ret);
-#endif
-               }
-          }
-#ifdef DEBUG
-        else
-          Serial.println("[HTTP]: Failed to connect");
-#endif
-        http.end();
+        sprintf(buf, "/wateringJob?task=%d&adcvalue=%d", taskId, adcValue);
      }
-     return ret;
+   else
+     sprintf(buf, "/wateringJob?task=%d", taskId);
+
+   http.begin(host, port, buf);
+
+   delay(1000);
+   int httpCode = http.GET();
+   delay(12000);
+   if (httpCode > 0)
+     {
+        if (httpCode == HTTP_CODE_OK)
+          {
+             ret = http.getString();
+#ifdef DEBUG
+             Serial.println(ret);
+#endif
+          }
+     }
+#ifdef DEBUG
+   else
+     Serial.println("[HTTP]: Failed to connect");
+#endif
+   http.end();
+   return ret;
 }
 
 static uint16_t getMoistureThreshold(int8_t taskId)
@@ -142,11 +161,11 @@ static uint16_t getMoistureThreshold(int8_t taskId)
    Serial.println(val);
 #endif
    if (val != "")
-   {
-      return uint16_t(val.toInt());
-   }
+     {
+        return uint16_t(val.toInt());
+     }
    else
-      return taskId == 3 ? MOISTURE_THRESHOLD : MOISTURE_THRESHOLD_LIMIT;
+     return taskId == 3 ? MOISTURE_THRESHOLD : MOISTURE_THRESHOLD_LIMIT;
 }
 
 static uint16_t getMotorRunningTime()
@@ -159,15 +178,20 @@ static uint16_t getMotorRunningTime()
 #endif
 
    if (val != "")
-   {
-      return uint16_t (val.toInt());
-   }
+     {
+        return uint16_t (val.toInt());
+     }
    else
-      return MOTOR_RUNNING_TIME;
+     return MOTOR_RUNNING_TIME;
 }
 
 void loop()
 {
+   if (WiFi.status() != WL_CONNECTED)
+     {
+        ESP.restart();
+        return;
+     }
    if (isMotorRunning == MOTOR_STOP)
      {
         uint16_t adcValue = analogRead(A0);
@@ -176,6 +200,11 @@ void loop()
         Serial.println("Adc Reading");
         Serial.print(adcValue);
 #endif
+        ThingSpeak.writeField(113018,
+                              2,
+                              adcValue,
+                              "BHYXFOGPKH8J73JT");
+        delay(100);
 
         if (adcValue > getMoistureThreshold(JOB_GET_MOISTURE_THRESHOLD)
             && adcValue < getMoistureThreshold(JOB_GET_MOISTURE_THRESHOLD_LIMIT))
