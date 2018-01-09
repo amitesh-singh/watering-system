@@ -4,7 +4,7 @@
 #include <ESP8266mDNS.h>
 
 const char* ssid = "AMIDUINO";
-const char* password = "f53*gmPS";
+const char* password = "yourpasswd";
 
 ESP8266WebServer server(80);
 

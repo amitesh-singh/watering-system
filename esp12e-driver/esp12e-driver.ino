@@ -34,7 +34,7 @@ static const char *host = "192.168.0.101";
 static const uint16_t port = 8080;
 static const uint8_t portMotor = 5; // GPIO_5
 static const char *ssid = "AMIDUINO";
-static const char *ssidPasswd = "f53*gmPS";
+static const char *ssidPasswd = "urpassword";
 
 WiFiClient client;
 
